@@ -1,0 +1,50 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Database
+data/*.db
+data/*.db-journal
+
+# Logs
+logs/*.log
+logs/*.error.log
+
+# Reports (generated files - not tracked)
+reports/*.html
+reports/*.json
+
+# Exports
+data/export_*.json
+
+# Chrome profile
+nhk_scraper_chrome_profile/
+*_chrome_profile/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak

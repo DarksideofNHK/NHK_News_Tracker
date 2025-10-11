@@ -1,0 +1,54 @@
+# NHK RSS差分追跡システム - 設定ファイル
+
+# 監視対象ソース
+sources:
+  # www.nhk.or.jp ドメイン（認証なし）
+  - name: "NHK首都圏ニュース"
+    url: "https://www.nhk.or.jp/shutoken-news/news_all_search.xml"
+    enabled: true
+
+  - name: "NHK福岡ニュース"
+    url: "https://www.nhk.or.jp/fukuoka-news/news_all_search.xml"
+    enabled: true
+
+  - name: "NHK札幌ニュース"
+    url: "https://www.nhk.or.jp/sapporo-news/news_all_search.xml"
+    enabled: true
+
+  - name: "NHK東海ニュース"
+    url: "https://www.nhk.or.jp/tokai-news/news_all_search.xml"
+    enabled: true
+
+  - name: "NHK広島ニュース"
+    url: "https://www.nhk.or.jp/hiroshima-news/news_all_search.xml"
+    enabled: true
+
+  - name: "NHK関西ニュース"
+    url: "https://www.nhk.or.jp/kansai-news/news_all_search.xml"
+    enabled: true
+
+  # news.web.nhk ドメイン（JWT認証必要 - Selenium使用）
+  - name: "NHK東北ニュース"
+    url: "https://news.web.nhk/tohoku-news/news_all_search.xml"
+    enabled: true  # Seleniumで自動取得
+
+# スクレイピング設定
+scraper:
+  timeout: 30  # タイムアウト（秒）
+  retry: 3     # リトライ回数
+  delay: 2     # リトライ間隔（秒）
+
+# データベース設定
+database:
+  path: "data/articles.db"
+
+# レポート設定
+report:
+  output_dir: "reports"
+  hours: 24  # 対象期間（時間）
+
+# ログ設定
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/nhk_tracker.log"

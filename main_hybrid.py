@@ -17,6 +17,7 @@ from parser import NhkXmlParser
 from storage import ArticleStorage
 from visualizer import ChangeVisualizer
 from gemini_analyzer import GeminiAnalyzer
+from notifier import MacNotifier
 
 def setup_logging(config: dict):
     """ログ設定"""
@@ -63,6 +64,9 @@ def main():
 
     # 統計
     total_stats = {'new': 0, 'updated': 0, 'unchanged': 0}
+    failed_sources = []  # 失敗したソースのリスト
+    all_correction_added = []  # 訂正追加のリスト [(source, title, keywords), ...]
+    all_correction_removed = []  # 訂正削除のリスト [(source, title, keywords), ...]
 
     # URLリストを作成（一括取得用）
     sources_dict = {}
@@ -76,6 +80,21 @@ def main():
 
     # 一括取得（requests + Selenium自動切り替え）
     contents = scraper.fetch_batch(sources_dict)
+
+    # NHK ONE検索（東北ニュース取得後に実行）
+    print(f"\n{'─'*60}")
+    print("NHK ONE検索: 訂正記事を検索中...")
+    print(f"{'─'*60}")
+    nhk_one_articles = []
+    try:
+        nhk_one_articles = scraper.search_nhk_one(query="失礼しました")
+        if nhk_one_articles:
+            print(f"✅ NHK ONE検索: {len(nhk_one_articles)}件の訂正記事を発見")
+        else:
+            print(f"ℹ️  NHK ONE検索: 訂正記事は見つかりませんでした")
+    except Exception as e:
+        logger.error(f"NHK ONE検索エラー: {e}")
+        print(f"⚠️ NHK ONE検索エラー: {e}")
 
     # 各ソースを処理
     for source_config in config['sources']:
@@ -91,6 +110,7 @@ def main():
 
         if xml_content is None:
             print(f"❌ 取得失敗: {name}")
+            failed_sources.append(name)
             continue
 
         # 解析
@@ -109,9 +129,43 @@ def main():
         print(f"  - 更新: {stats['updated']}件")
         print(f"  - 変更なし: {stats['unchanged']}件")
 
+        # 訂正の追加・削除を収集
+        for title, keywords in stats.get('correction_added', []):
+            all_correction_added.append((name, title, keywords))
+            print(f"  🔴 訂正追加: {title} [キーワード: {keywords}]")
+
+        for title, keywords in stats.get('correction_removed', []):
+            all_correction_removed.append((name, title, keywords))
+            print(f"  ⚠️  訂正削除: {title} [以前のキーワード: {keywords}]")
+
         # 統計集計
-        for key in total_stats:
+        for key in ['new', 'updated', 'unchanged']:
             total_stats[key] += stats[key]
+
+    # NHK ONE検索の記事をデータベースに保存
+    if nhk_one_articles:
+        print(f"\n{'─'*60}")
+        print("NHK ONE検索結果をデータベースに保存中...")
+        print(f"{'─'*60}")
+        nhk_one_stats = storage.save_articles('NHK ONE検索', nhk_one_articles)
+
+        print(f"📊 NHK ONE検索結果:")
+        print(f"  - 新規: {nhk_one_stats['new']}件")
+        print(f"  - 更新: {nhk_one_stats['updated']}件")
+        print(f"  - 変更なし: {nhk_one_stats['unchanged']}件")
+
+        # 訂正の追加・削除を収集
+        for title, keywords in nhk_one_stats.get('correction_added', []):
+            all_correction_added.append(('NHK ONE検索', title, keywords))
+            print(f"  🔴 訂正追加: {title} [キーワード: {keywords}]")
+
+        for title, keywords in nhk_one_stats.get('correction_removed', []):
+            all_correction_removed.append(('NHK ONE検索', title, keywords))
+            print(f"  ⚠️  訂正削除: {title} [以前のキーワード: {keywords}]")
+
+        # 統計集計
+        for key in ['new', 'updated', 'unchanged']:
+            total_stats[key] += nhk_one_stats[key]
 
     # 全体サマリー
     print(f"\n{'='*60}")
@@ -120,6 +174,10 @@ def main():
     print(f"新規記事: {total_stats['new']}件")
     print(f"更新記事: {total_stats['updated']}件")
     print(f"変更なし: {total_stats['unchanged']}件")
+    if all_correction_added:
+        print(f"🔴 訂正追加: {len(all_correction_added)}件")
+    if all_correction_removed:
+        print(f"⚠️  訂正削除: {len(all_correction_removed)}件")
 
     # HTMLレポート生成
     print(f"\n{'─'*60}")
@@ -175,6 +233,34 @@ def main():
     except Exception as e:
         print(f"⚠️ アーカイブビューアー生成エラー: {e}")
         logger.warning(f"アーカイブビューアー生成失敗: {e}")
+
+    # ポータルページ生成
+    print(f"\n{'─'*60}")
+    print("ポータルページ生成中...")
+    print(f"{'─'*60}")
+
+    try:
+        import generate_portal
+        generate_portal.generate_portal_html()
+    except Exception as e:
+        print(f"⚠️ ポータルページ生成エラー: {e}")
+        logger.warning(f"ポータルページ生成失敗: {e}")
+
+    # 訂正の追加・削除を通知
+    for source, title, keywords in all_correction_added:
+        MacNotifier.notify_correction_added(source, title, keywords)
+
+    for source, title, keywords in all_correction_removed:
+        MacNotifier.notify_correction_removed(source, title, keywords)
+
+    # 実行完了通知
+    total_count = sum(total_stats.values())
+    MacNotifier.notify_completion(
+        new_count=total_stats['new'],
+        updated_count=total_stats['updated'],
+        total_count=total_count,
+        failed_sources=failed_sources if failed_sources else None
+    )
 
     print(f"\n{'='*60}")
     print(f"実行完了: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

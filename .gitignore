@@ -48,3 +48,9 @@ nhk_scraper_chrome_profile/
 # Temporary files
 *.tmp
 *.bak
+
+# Local Netlify folder
+.netlify
+
+# Personal development notes (not for public release)
+開発ブログ_*.txt

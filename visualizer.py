@@ -7,8 +7,34 @@ from pathlib import Path
 from typing import List, Dict
 from datetime import datetime
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+
+def highlight_correction_notice(text: str) -> str:
+    """
+    ※から始まる文（訂正のおことわり）をハイライト
+
+    Args:
+        text: 元のテキスト
+
+    Returns:
+        ハイライトされたHTML
+    """
+    if not text:
+        return text
+
+    # ※から始まる文を検出
+    # パターン1: ※から始まり「失礼しました」を含む場合はその後の。まで
+    # パターン2: それ以外は最初の。または改行まで
+    pattern = r'(※[^※]*?失礼しました[^\n]*?。|※[^。\n]+[。\n]?)'
+
+    def replace_func(match):
+        notice = match.group(1)
+        return f'<span class="correction-notice">{notice}</span>'
+
+    return re.sub(pattern, replace_func, text)
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -79,6 +105,9 @@ HTML_TEMPLATE = '''
         .change-item.description_changed {
             border-left: 4px solid #ea4335;
         }
+        .change-item.description_added {
+            border-left: 4px solid #4285f4;
+        }
         .change-type {
             display: inline-block;
             padding: 4px 12px;
@@ -98,6 +127,10 @@ HTML_TEMPLATE = '''
         .change-type.description_changed {
             background-color: #f8d7da;
             color: #721c24;
+        }
+        .change-type.description_added {
+            background-color: #d2e3fc;
+            color: #174ea6;
         }
         .change-type.correction_removed {
             background-color: #ff6b6b;
@@ -135,11 +168,14 @@ HTML_TEMPLATE = '''
             padding: 15px;
             background-color: #f8f9fa;
             border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.8;
         }
         .diff-old {
             color: #d32f2f;
             text-decoration: line-through;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         }
         .diff-new {
             color: #388e3c;
@@ -189,6 +225,16 @@ HTML_TEMPLATE = '''
         }
         .nav-link.secondary:hover {
             background-color: #2d8e47;
+        }
+        .correction-notice {
+            background: #ffeb3b;
+            border-left: 4px solid #d32f2f;
+            padding: 8px 12px;
+            margin: 8px 0;
+            display: inline-block;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #d32f2f;
         }
     </style>
 </head>
@@ -244,6 +290,8 @@ HTML_TEMPLATE = '''
                         🆕 新規
                     {% elif change.change_type == 'title_changed' %}
                         ✏️ タイトル変更
+                    {% elif change.change_type == 'description_added' or (change.change_type in ['description_changed', 'description_added'] and not change.old_value) %}
+                        ➕ 説明文追記
                     {% elif change.change_type == 'description_changed' %}
                         📝 説明文変更
                     {% elif change.change_type == 'correction_removed' %}
@@ -252,12 +300,23 @@ HTML_TEMPLATE = '''
                 </span>
                 <span class="source-badge">{{ change.source }}</span>
                 {% if change.has_correction %}
-                <span class="correction-badge">🔴 訂正あり{% if change.correction_keywords %}: {{ change.correction_keywords }}{% endif %}</span>
+                <span class="correction-badge">🔴 おことわり</span>
                 {% endif %}
             </div>
 
             {% if change.change_type == 'new' %}
                 <h3>{{ change.new_value }}</h3>
+            {% elif change.change_type == 'description_added' or (change.change_type in ['description_changed', 'description_added'] and not change.old_value) %}
+                {% if change.change_summary %}
+                <div class="diff-container" style="background-color: #e3f2fd; border-left: 3px solid #1976d2;">
+                    <strong>🤖 AI分析:</strong>
+                    <div style="margin-top: 8px;">{{ change.change_summary }}</div>
+                </div>
+                {% endif %}
+                <div class="diff-container">
+                    <div class="diff-new">追記内容:
+{{ highlight_correction_notice(change.new_value)|safe }}</div>
+                </div>
             {% else %}
                 {% if change.change_summary %}
                 <div class="diff-container" style="background-color: #e3f2fd; border-left: 3px solid #1976d2;">
@@ -266,8 +325,10 @@ HTML_TEMPLATE = '''
                 </div>
                 {% endif %}
                 <div class="diff-container">
-                    <div class="diff-old">旧: {{ change.old_value }}</div>
-                    <div class="diff-new">新: {{ change.new_value }}</div>
+                    <div class="diff-old">旧:
+{{ change.old_value }}</div>
+                    <div class="diff-new">新:
+{{ highlight_correction_notice(change.new_value)|safe }}</div>
                 </div>
             {% endif %}
 
@@ -297,6 +358,8 @@ class ChangeVisualizer:
 
     def __init__(self):
         self.template = Template(HTML_TEMPLATE)
+        # カスタムフィルターを追加
+        self.template.globals['highlight_correction_notice'] = highlight_correction_notice
 
     def generate_html_report(self, changes: List[Dict], output_path: str, hours: int = 24):
         """
@@ -310,7 +373,9 @@ class ChangeVisualizer:
         # 統計計算
         new_count = sum(1 for c in changes if c['change_type'] == 'new')
         title_changed_count = sum(1 for c in changes if c['change_type'] == 'title_changed')
-        desc_changed_count = sum(1 for c in changes if c['change_type'] == 'description_changed')
+        desc_changed_count = sum(1 for c in changes if c['change_type'] in ('description_changed', 'description_added'))
+        correction_count = sum(1 for c in changes if c.get('has_correction'))
+        correction_removed_count = sum(1 for c in changes if c['change_type'] == 'correction_removed')
 
         # HTML生成
         html = self.template.render(
@@ -320,6 +385,8 @@ class ChangeVisualizer:
             new_count=new_count,
             title_changed_count=title_changed_count,
             desc_changed_count=desc_changed_count,
+            correction_count=correction_count,
+            correction_removed_count=correction_removed_count,
             changes=changes,
         )
 

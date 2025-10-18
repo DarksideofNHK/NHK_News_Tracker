@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-NHK記事アーカイブビューアー
-取得した全記事を表示（変更の有無に関わらず）
+NHKおことわり記事ビューアー
+訂正・おことわり記事のみを表示（削除されたものも含む）
 """
 
 import sqlite3
@@ -73,12 +73,12 @@ def extract_correction_summary(text, max_length=150):
 
 # ソース名からベースURLへのマッピング
 SOURCE_BASE_URLS = {
-    'NHK首都圏ニュース': 'https://www.nhk.or.jp/shutoken-news/',
-    'NHK福岡ニュース': 'https://www.nhk.or.jp/fukuoka-news/',
-    'NHK札幌ニュース': 'https://www.nhk.or.jp/sapporo-news/',
-    'NHK東海ニュース': 'https://www.nhk.or.jp/tokai-news/',
-    'NHK広島ニュース': 'https://www.nhk.or.jp/hiroshima-news/',
-    'NHK関西ニュース': 'https://www.nhk.or.jp/kansai-news/',
+    'NHK首都圏ニュース': 'https://www3.nhk.or.jp/shutoken-news/',
+    'NHK福岡ニュース': 'https://www3.nhk.or.jp/fukuoka-news/',
+    'NHK札幌ニュース': 'https://www3.nhk.or.jp/sapporo-news/',
+    'NHK東海ニュース': 'https://www3.nhk.or.jp/tokai-news/',
+    'NHK広島ニュース': 'https://www3.nhk.or.jp/hiroshima-news/',
+    'NHK関西ニュース': 'https://www3.nhk.or.jp/kansai-news/',
     'NHK東北ニュース': 'https://news.web.nhk/tohoku-news/',
     'NHK ONE検索': '',  # 完全URLで保存されているため、ベースURLは不要
 }
@@ -103,26 +103,8 @@ def get_full_url(source, relative_path):
         return base_url + relative_path
     return relative_path
 
-def get_article_latest_change(db_path, link):
-    """記事の最新変更を取得"""
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT old_value, new_value, change_type, detected_at
-        FROM changes
-        WHERE link = ?
-        ORDER BY detected_at DESC
-        LIMIT 1
-    """, (link,))
-
-    result = cursor.fetchone()
-    conn.close()
-    return result
-
-def get_all_articles(db_path, limit=None):
-    """全記事を取得（新しい順）"""
+def get_correction_articles(db_path, limit=None):
+    """おことわり記事のみを取得（新しい順）"""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -132,6 +114,7 @@ def get_all_articles(db_path, limit=None):
         *,
         (SELECT COUNT(*) FROM changes WHERE changes.link = articles.link) as change_count
     FROM articles
+    WHERE has_correction = 1
     ORDER BY last_seen DESC
     """
 
@@ -144,8 +127,8 @@ def get_all_articles(db_path, limit=None):
 
     return articles
 
-def get_source_stats(db_path):
-    """ソース別統計を取得"""
+def get_correction_stats(db_path):
+    """おことわり記事のソース別統計を取得"""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -156,6 +139,7 @@ def get_source_stats(db_path):
         MIN(first_seen) as oldest,
         MAX(last_seen) as newest
     FROM articles
+    WHERE has_correction = 1
     GROUP BY source
     ORDER BY source
     """)
@@ -176,23 +160,23 @@ def generate_html(articles, stats, output_path):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NHK記事アーカイブ - 全記事</title>
+    <title>NHKおことわり記事一覧 - 訂正記事</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
     <!-- OGP (Open Graph Protocol) -->
-    <meta property="og:title" content="NHK記事アーカイブ - 全記事" />
-    <meta property="og:description" content="NHK地方局ニュースの全記事アーカイブ。ソース別・訂正記事の検索が可能。" />
+    <meta property="og:title" content="NHKおことわり記事一覧 - 訂正記事" />
+    <meta property="og:description" content="NHK地方局ニュースの訂正・おことわり記事を一覧表示。削除されたものも含めて追跡。" />
     <meta property="og:image" content="https://nhk-news-tracker.netlify.app/ogp-image.png" />
-    <meta property="og:url" content="https://nhk-news-tracker.netlify.app/archive.html" />
+    <meta property="og:url" content="https://nhk-news-tracker.netlify.app/corrections.html" />
     <meta property="og:type" content="website" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="NHK記事アーカイブ - 全記事" />
-    <meta name="twitter:description" content="NHK地方局ニュースの全記事アーカイブ。ソース別・訂正記事の検索が可能。" />
+    <meta name="twitter:title" content="NHKおことわり記事一覧 - 訂正記事" />
+    <meta name="twitter:description" content="NHK地方局ニュースの訂正・おことわり記事を一覧表示。削除されたものも含めて追跡。" />
     <meta name="twitter:image" content="https://nhk-news-tracker.netlify.app/ogp-image.png" />
 
     <style>
@@ -204,7 +188,7 @@ def generate_html(articles, stats, output_path):
 
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%);
             padding: 0;
             margin: 0;
             line-height: 1.4;
@@ -310,7 +294,7 @@ def generate_html(articles, stats, output_path):
         .stat-number {{
             font-size: 2em;
             font-weight: bold;
-            color: #4facfe;
+            color: #fc4a1a;
         }}
 
         .stat-label {{
@@ -348,7 +332,7 @@ def generate_html(articles, stats, output_path):
 
         .search-box:focus {{
             outline: none;
-            border-color: #4facfe;
+            border-color: #fc4a1a;
         }}
 
         .filter-buttons {{
@@ -373,9 +357,9 @@ def generate_html(articles, stats, output_path):
         }}
 
         .filter-btn.active {{
-            background: #4facfe;
+            background: #fc4a1a;
             color: white;
-            border-color: #4facfe;
+            border-color: #fc4a1a;
         }}
 
         .article-card {{
@@ -385,6 +369,7 @@ def generate_html(articles, stats, output_path):
             margin-bottom: 15px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             transition: transform 0.2s, box-shadow 0.2s;
+            border-left: 5px solid #fc4a1a;
         }}
 
         .article-card:hover {{
@@ -407,8 +392,8 @@ def generate_html(articles, stats, output_path):
             border-radius: 20px;
             font-weight: bold;
             font-size: 0.8em;
-            background: #e3f2fd;
-            color: #1976d2;
+            background: #fee2e2;
+            color: #991b1b;
         }}
 
         .article-meta {{
@@ -426,7 +411,7 @@ def generate_html(articles, stats, output_path):
         }}
 
         .article-link {{
-            color: #4facfe;
+            color: #fc4a1a;
             text-decoration: none;
             font-size: 0.85em;
             word-break: break-all;
@@ -436,12 +421,6 @@ def generate_html(articles, stats, output_path):
 
         .article-link:hover {{
             text-decoration: underline;
-        }}
-
-        .article-description {{
-            color: #4a5568;
-            line-height: 1.6;
-            margin-top: 10px;
         }}
 
         .article-badges {{
@@ -457,11 +436,6 @@ def generate_html(articles, stats, output_path):
             border-radius: 12px;
             font-size: 0.75em;
             font-weight: bold;
-        }}
-
-        .badge-changed {{
-            background: #fef3c7;
-            color: #92400e;
         }}
 
         .badge-correction {{
@@ -485,22 +459,11 @@ def generate_html(articles, stats, output_path):
             font-size: 0.9em;
         }}
 
-        .diff-old {{
-            background: #fee;
-            padding: 12px;
-            border-radius: 4px;
-            margin-bottom: 8px;
-            color: #c00;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            line-height: 1.8;
-        }}
-
         .diff-new {{
-            background: #efe;
+            background: #fffbeb;
             padding: 12px;
             border-radius: 4px;
-            color: #0a0;
+            border: 2px solid #f59e0b;
             white-space: pre-wrap;
             word-wrap: break-word;
             line-height: 1.8;
@@ -523,40 +486,6 @@ def generate_html(articles, stats, output_path):
             font-weight: bold;
             color: #2d3748;
         }}
-
-        .nav-links {{
-            background: white;
-            padding: 15px;
-            border-radius: 15px;
-            margin-bottom: 20px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }}
-
-        .nav-link {{
-            padding: 10px 20px;
-            background: #4facfe;
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: bold;
-            transition: background-color 0.2s;
-        }}
-
-        .nav-link:hover {{
-            background: #3d8fd9;
-        }}
-
-        .nav-link.secondary {{
-            background: #667eea;
-        }}
-
-        .nav-link.secondary:hover {{
-            background: #5568d3;
-        }}
     </style>
 </head>
 <body>
@@ -567,20 +496,20 @@ def generate_html(articles, stats, output_path):
             <div class="global-nav-links">
                 <a href="index.html" class="global-nav-link">ポータル</a>
                 <a href="history.html" class="global-nav-link">最近の変更</a>
-                <a href="corrections.html" class="global-nav-link">おことわり</a>
-                <a href="archive.html" class="global-nav-link active">アーカイブ</a>
+                <a href="corrections.html" class="global-nav-link active">おことわり</a>
+                <a href="archive.html" class="global-nav-link">アーカイブ</a>
             </div>
         </div>
     </nav>
 
     <div class="container">
         <header>
-            <h1>🗂️ NHK記事アーカイブ</h1>
-            <p class="subtitle">取得した全ての記事を表示</p>
+            <h1>🔴 おことわり記事一覧</h1>
+            <p class="subtitle">訂正・おことわりが含まれた記事（削除されたものも含む）</p>
             <div class="stats">
                 <div class="stat-item">
                     <div class="stat-number">{len(articles)}</div>
-                    <div class="stat-label">総記事数</div>
+                    <div class="stat-label">おことわり記事数</div>
                 </div>
 """
 
@@ -617,15 +546,6 @@ def generate_html(articles, stats, output_path):
     html += """
                 </div>
             </div>
-
-            <div class="filter-section">
-                <label class="filter-label">🏷️ フィルター</label>
-                <div class="filter-buttons">
-                    <button class="filter-btn type-filter active" data-type="all">すべて</button>
-                    <button class="filter-btn type-filter" data-type="changed">変更あり</button>
-                    <button class="filter-btn type-filter" data-type="correction">訂正関連</button>
-                </div>
-            </div>
         </div>
 
         <div class="results-info">
@@ -638,8 +558,8 @@ def generate_html(articles, stats, output_path):
     if not articles:
         html += """
             <div class="no-results">
-                まだ記事が記録されていません。<br>
-                システムが1時間ごとに自動でチェックしています。
+                おことわり記事はまだ記録されていません。<br>
+                システムが自動でチェックしています。
             </div>
 """
     else:
@@ -654,8 +574,6 @@ def generate_html(articles, stats, output_path):
 
             # データ属性
             data_attrs = f'data-source="{article["source"]}"'
-            data_attrs += f' data-changed="{1 if article["change_count"] > 0 else 0}"'
-            data_attrs += f' data-correction="{1 if article["has_correction"] else 0}"'
             data_attrs += f' data-search="{article["title"]} {article["description"] or ""}"'
 
             html += f"""
@@ -670,37 +588,19 @@ def generate_html(articles, stats, output_path):
 
                 <div class="article-title">{article['title']}</div>
                 <a href="{full_url}" class="article-link" target="_blank">→ 元記事を読む（NHK）</a>
+                <div class="article-badges"><span class="badge badge-correction">🔴 おことわり: {article["correction_keywords"]}</span></div>
 """
 
-            # 訂正がある場合は差分表示（descriptionに※または失礼しましたが実際に含まれる場合のみ）
-            if article['has_correction'] and article['description'] and ('※' in article['description'] or '失礼しました' in article['description']):
-                html += f'                <div class="article-badges"><span class="badge badge-correction">🔴 おことわり: {article["correction_keywords"]}</span></div>\n'
-
-                # 記事のdescriptionから訂正部分を抽出
-                # 訂正部分を含む要約を抽出
-                correction_summary = extract_correction_summary(article['description'], 150)
+            # おことわり部分を抽出して表示
+            if article['description'] and ('※' in article['description'] or '失礼しました' in article['description']):
+                correction_summary = extract_correction_summary(article['description'], 200)
                 highlighted_correction = highlight_correction_notice(correction_summary)
 
                 html += f"""                <div class="change-diff">
-                    <div class="diff-new">【引用】訂正部分:\n{highlighted_correction}</div>
+                    <div class="diff-new">【引用】おことわり部分:\n{highlighted_correction}</div>
                     <div style="margin-top: 10px; text-align: right;">
-                        <a href="{full_url}" target="_blank" style="color: #667eea; text-decoration: none; font-weight: bold;">→ 元記事を読む（NHK）</a>
+                        <a href="{full_url}" target="_blank" style="color: #fc4a1a; text-decoration: none; font-weight: bold;">→ 元記事を読む（NHK）</a>
                     </div>
-                </div>
-"""
-            else:
-                # 訂正がない場合は通常の引用表示
-                html += f"""                <div class="article-description" style="color: #718096; font-style: italic; font-size: 0.95em;">
-                    <strong>【引用】</strong> {(article['description'] or '')[:150]}{'...' if article['description'] and len(article['description']) > 150 else ''}
-                </div>
-
-                <div class="article-badges">
-"""
-
-                if article['change_count'] > 0:
-                    html += f'                    <span class="badge badge-changed">変更 {article["change_count"]}回</span>\n'
-
-                html += """
                 </div>
 """
 
@@ -715,12 +615,10 @@ def generate_html(articles, stats, output_path):
     <script>
         const searchBox = document.getElementById('searchBox');
         const sourceFilters = document.querySelectorAll('.source-filter');
-        const typeFilters = document.querySelectorAll('.type-filter');
         const articles = document.querySelectorAll('.article-card');
         const resultCount = document.getElementById('resultCount');
 
         let currentSource = 'all';
-        let currentType = 'all';
         let currentSearch = '';
 
         function filterArticles() {
@@ -728,26 +626,16 @@ def generate_html(articles, stats, output_path):
 
             articles.forEach(article => {
                 const articleSource = article.getAttribute('data-source');
-                const hasChanged = article.getAttribute('data-changed') === '1';
-                const hasCorrection = article.getAttribute('data-correction') === '1';
                 const searchText = article.getAttribute('data-search').toLowerCase();
 
                 // ソースフィルター
                 const sourceMatch = currentSource === 'all' || articleSource === currentSource;
 
-                // タイプフィルター
-                let typeMatch = true;
-                if (currentType === 'changed') {
-                    typeMatch = hasChanged;
-                } else if (currentType === 'correction') {
-                    typeMatch = hasCorrection;
-                }
-
                 // 検索フィルター
                 const searchMatch = currentSearch === '' || searchText.includes(currentSearch);
 
                 // すべての条件を満たす場合のみ表示
-                if (sourceMatch && typeMatch && searchMatch) {
+                if (sourceMatch && searchMatch) {
                     article.style.display = 'block';
                     visibleCount++;
                 } else {
@@ -770,16 +658,6 @@ def generate_html(articles, stats, output_path):
                 sourceFilters.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentSource = btn.getAttribute('data-source');
-                filterArticles();
-            });
-        });
-
-        // タイプフィルター
-        typeFilters.forEach(btn => {
-            btn.addEventListener('click', () => {
-                typeFilters.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                currentType = btn.getAttribute('data-type');
                 filterArticles();
             });
         });
@@ -814,29 +692,29 @@ def generate_html(articles, stats, output_path):
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 
-    print(f"✅ アーカイブHTMLを生成しました: {output_path}")
-    print(f"📊 総記事数: {len(articles)}件")
+    print(f"✅ おことわり記事HTMLを生成しました: {output_path}")
+    print(f"📊 おことわり記事数: {len(articles)}件")
 
 def main():
     """メイン処理"""
     db_path = PROJECT_ROOT / 'data' / 'articles.db'
-    output_path = PROJECT_ROOT / 'reports' / 'archive.html'
+    output_path = PROJECT_ROOT / 'reports' / 'corrections.html'
 
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("NHK記事アーカイブビューアー")
+    print("NHKおことわり記事ビューアー")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print()
 
-    # データベースから記事を取得
-    print("📖 データベースから記事を取得中...")
-    articles = get_all_articles(db_path)
-    stats = get_source_stats(db_path)
+    # データベースから訂正記事を取得
+    print("📖 データベースからおことわり記事を取得中...")
+    articles = get_correction_articles(db_path)
+    stats = get_correction_stats(db_path)
 
-    print(f"✅ {len(articles)}件の記事を取得しました")
+    print(f"✅ {len(articles)}件のおことわり記事を取得しました")
     print()
 
     # HTMLを生成
-    print("🎨 HTMLアーカイブを生成中...")
+    print("🎨 HTMLを生成中...")
     generate_html(articles, stats, output_path)
 
     print()

@@ -1,0 +1,38 @@
+[build]
+  publish = "reports"
+  # ビルドコマンドは無効化（ローカルで生成したHTMLをそのままデプロイ）
+  command = ""
+
+[build.environment]
+  PYTHON_VERSION = "3.9"
+
+# データベースファイルへのアクセスを禁止（著作権保護）
+[[redirects]]
+  from = "/*.db"
+  to = "/404.html"
+  status = 403
+  force = true
+
+[[redirects]]
+  from = "/*.sqlite"
+  to = "/404.html"
+  status = 403
+  force = true
+
+[[redirects]]
+  from = "/*.sqlite3"
+  to = "/404.html"
+  status = 403
+  force = true
+
+# JSONエクスポートファイルへのアクセスも禁止（著作権保護）
+[[redirects]]
+  from = "/data/*"
+  to = "/404.html"
+  status = 403
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

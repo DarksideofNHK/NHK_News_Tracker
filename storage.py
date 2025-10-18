@@ -114,28 +114,49 @@ class ArticleStorage:
         if not text:
             return False, []
 
-        # 訂正キーワード
-        keywords = ['当初', '掲載', '失礼しました', '※']  # 全角※
+        # ※（全角）は必須
+        if '※' not in text:
+            return False, []
 
-        found = []
-        for keyword in keywords:
-            if keyword in text:
-                found.append(keyword)
+        found = ['※']
 
-        return len(found) > 0, found
+        # パターン1: ※ + 「当初」+ 「掲載」（3つすべて）
+        if '当初' in text and '掲載' in text:
+            found.extend(['当初', '掲載'])
+            return True, found
 
-    def save_articles(self, source: str, articles: List[Dict[str, str]]) -> Dict[str, int]:
+        # パターン2: ※ + 「失礼しました」
+        if '失礼しました' in text:
+            found.append('失礼しました')
+            return True, found
+
+        # ※はあるが、訂正パターンに該当しない
+        return False, []
+
+    def save_articles(self, source: str, articles: List[Dict[str, str]]) -> Dict:
         """
         記事を保存し、変更を検出
 
         Returns:
-            {'new': 新規件数, 'updated': 更新件数, 'unchanged': 変更なし件数}
+            {
+                'new': 新規件数,
+                'updated': 更新件数,
+                'unchanged': 変更なし件数,
+                'correction_added': [(title, keywords), ...],
+                'correction_removed': [(title, keywords), ...]
+            }
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         now = datetime.now().isoformat()
 
-        stats = {'new': 0, 'updated': 0, 'unchanged': 0}
+        stats = {
+            'new': 0,
+            'updated': 0,
+            'unchanged': 0,
+            'correction_added': [],
+            'correction_removed': []
+        }
 
         for article in articles:
             # 訂正検出
@@ -167,6 +188,7 @@ class ArticleStorage:
                 stats['new'] += 1
                 if has_correction:
                     logger.info(f"🔴 新規記事（訂正あり）: {article['title']} [キーワード: {keywords_str}]")
+                    stats['correction_added'].append((article['title'], keywords_str))
                 else:
                     logger.info(f"新規記事: {article['title']}")
 
@@ -209,16 +231,21 @@ class ArticleStorage:
                         WHERE source = ? AND link = ?
                     ''', (article['description'], now, 1 if has_correction else 0, keywords_str, source, article['link']))
 
+                    # 変更タイプを判定（空からの追加は「追記」、それ以外は「変更」）
+                    change_type = 'description_added' if not old_desc else 'description_changed'
+
                     cursor.execute('''
                         INSERT INTO changes (source, link, change_type, old_value, new_value, detected_at, change_summary, has_correction, correction_keywords)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (source, article['link'], 'description_changed', old_desc, article['description'], now, change_summary, 1 if has_correction else 0, keywords_str))
+                    ''', (source, article['link'], change_type, old_desc, article['description'], now, change_summary, 1 if has_correction else 0, keywords_str))
 
                     # 訂正の追加・削除を検出
                     if not old_has_correction and has_correction:
                         logger.info(f"🔴 訂正追加: {article['title']} [キーワード: {keywords_str}]")
+                        stats['correction_added'].append((article['title'], keywords_str))
                     elif old_has_correction and not has_correction:
                         logger.info(f"⚠️  訂正削除: {article['title']} (以前のキーワード: {keywords_str})")
+                        stats['correction_removed'].append((article['title'], keywords_str))
                         # 訂正削除を記録
                         cursor.execute('''
                             INSERT INTO changes (source, link, change_type, old_value, new_value, detected_at, change_summary, has_correction, correction_keywords)

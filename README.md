@@ -14,15 +14,17 @@ NHKニュースのRSSフィードを監視し、記事の変更（タイトル�
 - **履歴管理**: 全ての変更履歴をデータベースに保存
 - **HTMLレポート**: 見やすいWebインターフェースで確認
 
-### 監視対象（7ソース）
+### 監視対象（9ソース）
 
-1. NHK首都圏ニュース
-2. NHK福岡ニュース
-3. NHK札幌ニュース
-4. NHK東海ニュース
-5. NHK広島ニュース
-6. NHK関西ニュース
-7. NHK東北ニュース（Selenium使用・認証対応）
+1. NHK首都圏ニュース（RSS）
+2. NHK福岡ニュース（RSS）
+3. NHK札幌ニュース（RSS）
+4. NHK東海ニュース（RSS）
+5. NHK広島ニュース（RSS）
+6. NHK関西ニュース（RSS）
+7. NHK全国ニュース（RSS）
+8. NHK東北ニュース（Selenium使用・認証対応）
+9. **NHK ONE検索**（Selenium使用・訂正記事横断検索）
 
 ## 📋 必要要件
 
@@ -35,8 +37,8 @@ NHKニュースのRSSフィードを監視し、記事の変更（タイトル�
 ### 1. リポジトリのクローン
 
 ```bash
-git clone https://github.com/Trudibussi/NHK_News_Tracker.git
-cd NHK_News_Tracker
+git clone https://github.com/DarksideofNHK/nhk-news-tracker.git
+cd nhk-news-tracker
 ```
 
 ### 2. セットアップスクリプトの実行
@@ -74,6 +76,107 @@ python3 main_hybrid.py
 
 成功すると、`reports/`ディレクトリにHTMLレポートが生成されます。
 
+## 🌐 Webサイトとして公開
+
+このシステムは**ローカル実行 + HTMLアップロード**方式でWebサイトとして公開できます。
+
+### デプロイ戦略
+
+```
+あなたのMac
+  ↓ データ取得（Selenium、RSS）
+  ↓ HTMLレポート生成
+  ↓
+Webサイト（Netlify/GitHub Pages）
+  ↓ HTMLファイルのみをホスティング
+```
+
+**メリット:**
+- ✅ Selenium認証が必要なページも取得可能
+- ✅ サーバー側でChromeDriver不要
+- ✅ ローカルで動作確認してからデプロイ
+- ✅ 完全無料で運用可能
+
+### 簡単デプロイ
+
+#### 方法A: Netlify Drop（最も簡単・3分）
+
+1. https://app.netlify.com/drop を開く
+2. `reports` フォルダをドラッグ&ドロップ
+3. 完了！URLが自動発行されます
+
+#### 方法B: Netlify CLI（自動化可能）
+
+```bash
+# 初回のみ
+npm install -g netlify-cli
+netlify login
+netlify init
+
+# デプロイ
+./deploy_simple.sh
+```
+
+#### 方法C: GitHub Pages（完全自動・1時間ごと更新）
+
+```bash
+# GitHub設定（初回のみ）
+git init
+git add .
+git commit -m "Initial commit"
+git remote add origin git@github.com:DarksideofNHK/nhk-news-tracker.git
+git push -u origin main
+
+# GitHub Pages設定
+# リポジトリ → Settings → Pages → Source: gh-pages
+```
+
+詳細は以下のガイドを参照:
+- `QUICK_COMMANDS.md` - よく使うコマンド集
+- `AUTOMATED_DEPLOY.md` - 自動実行設定ガイド
+- `DEPLOY_SIMPLE.md` - 簡単デプロイガイド
+- `SETUP_NEW_GITHUB.md` - GitHub新規設定ガイド
+
+### 自動実行 + 自動デプロイ（完全自動化）
+
+macOS launchdで毎時自動実行し、Netlifyへ自動デプロイ:
+
+```bash
+# 1. plistファイルを作成
+cat > ~/Library/LaunchAgents/com.nhk.tracker.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nhk.tracker</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/path/to/nhk-news-tracker/run_and_deploy.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/nhk-tracker.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/nhk-tracker-error.log</string>
+</dict>
+</plist>
+EOF
+
+# 2. サービスを開始
+launchctl load ~/Library/LaunchAgents/com.nhk.tracker.plist
+
+# 3. ログを確認
+tail -f /tmp/nhk-tracker.log
+```
+
+詳細は `AUTOMATED_DEPLOY.md` を参照してください。
+
 ## 📁 生成されるファイル
 
 ### HTMLレポート（`reports/`ディレクトリ）
@@ -96,8 +199,13 @@ python3 main_hybrid.py
 ### 環境変数（`.env`ファイル）
 
 ```bash
-# Gemini API Key（AI分析機能用・オプション）
-GEMINI_API_KEY=your_api_key_here
+# Gemini API Key（必須）
+# https://aistudio.google.com/app/apikey から取得
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Anthropic Claude API Key（週次レポート生成用）
+# https://console.anthropic.com/settings/keys から取得
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
 Gemini API Keyの取得方法：
@@ -282,7 +390,7 @@ Issue・Pull Requestは歓迎です。
 
 ## 📮 お問い合わせ
 
-Issue tracker: https://github.com/Trudibussi/NHK_News_Tracker/issues
+Issue tracker: https://github.com/DarksideofNHK/nhk-news-tracker/issues
 
 ## 🙏 謝辞
 
@@ -292,13 +400,23 @@ Issue tracker: https://github.com/Trudibussi/NHK_News_Tracker/issues
 
 ## 📈 実績
 
-- 全7ソース: 100%成功率
-- 約800記事/回を自動取得
+- 全9ソース: 100%成功率（RSS 7 + Selenium 2）
+- 約1000記事/回を自動取得
 - タイトル・説明文の変更検出
-- 訂正記事の自動追跡
+- 訂正記事の自動追跡（NHK ONE検索を含む）
 - AI分析による変更内容の要約
+- 訂正箇所の視覚的ハイライト表示
+- 複数デプロイ方法対応（Netlify/GitHub Pages）
 
 ---
 
-**バージョン**: 3.2.0
-**最終更新**: 2025-10-11
+**バージョン**: 4.0.0
+**最終更新**: 2025-10-12
+
+### 新機能（v4.0.0）
+
+- **NHK ONE検索機能**: 地域局の訂正記事を横断検索
+- **訂正ハイライト**: 黄色背景×赤文字で訂正箇所を強調
+- **静的デプロイ**: ローカル実行+HTMLアップロード方式
+- **自動デプロイスクリプト**: `deploy_simple.sh`, `deploy_static.sh`
+- **包括的なデプロイガイド**: 5つのガイドドキュメント

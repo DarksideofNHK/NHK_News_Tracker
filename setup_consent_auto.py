@@ -12,30 +12,40 @@ import time
 import os
 import shutil
 
-def setup_with_auto_consent():
-    """同意ダイアログを自動クリック"""
+def setup_with_auto_consent(auto_mode=False):
+    """同意ダイアログを自動クリック
+
+    Args:
+        auto_mode: True の場合、対話プロンプトをスキップ
+    """
     print("="*60)
     print("NHK東北専用プロファイル作成（自動同意版）")
     print("="*60)
 
     profile_dir = os.path.expanduser('~/nhk_scraper_chrome_profile')
 
-    # 既存プロファイルを削除
+    # 既存プロファイルの確認（削除はしない - 上書きモード）
     if os.path.exists(profile_dir):
-        print(f"\n既存プロファイルを削除します: {profile_dir}")
-        shutil.rmtree(profile_dir)
-        print("✅ 削除完了")
+        if not auto_mode:
+            print(f"\n既存プロファイルを使用します: {profile_dir}")
+            print("（既存の認証情報を上書きします）")
+    else:
+        print(f"\n新規プロファイル作成: {profile_dir}")
 
-    print(f"\n新規プロファイル: {profile_dir}")
-
-    print("\n" + "="*60)
-    print("手順:")
-    print("="*60)
-    print("\n1. Chromeウィンドウが開きます")
-    print("2. 同意ダイアログが表示されたら自動でクリックを試みます")
-    print("3. 自動クリックが失敗したら、手動でOKをクリックしてください")
-    print("\n準備ができたらEnterキーを押してください...")
-    input()
+    if not auto_mode:
+        print("\n" + "="*60)
+        print("手順:")
+        print("="*60)
+        print("\n1. Chromeウィンドウが開きます")
+        print("2. 同意ダイアログが表示されたら2段階の自動クリックを試みます")
+        print("   - チェックボックスにチェック")
+        print("   - 「次へ」ボタンをクリック")
+        print("   - 「サービスの利用を開始する」ボタンをクリック")
+        print("3. 自動クリックが失敗したら、手動で上記の操作を実行してください")
+        print("\n準備ができたらEnterキーを押してください...")
+        input()
+    else:
+        print("\n自動モード: 対話プロンプトをスキップします")
 
     driver = None
 
@@ -61,50 +71,125 @@ def setup_with_auto_consent():
         print("\n同意ダイアログを探しています（10秒待機）...")
         time.sleep(10)
 
-        # 同意ダイアログの自動クリックを試みる
-        print("\n同意ダイアログの自動クリックを試みます...")
+        # 2段階の同意ダイアログの自動クリック
+        print("\n【2段階の同意操作を実行します】")
+        print("1. チェックボックス「内容について確認しました」をチェック")
+        print("2. 「次へ」ボタンをクリック")
+        print("3. 「サービスの利用を開始する」ボタンをクリック")
 
         consent_clicked = False
 
-        # パターン1: ボタンのテキストで探す
         try:
-            # 一般的な同意ボタンのテキスト
-            button_texts = ['同意する', 'OK', '同意', 'はい', '了解', 'Accept', 'Agree']
+            # ステップ1: チェックボックスを探してクリック
+            print("\n[ステップ1] チェックボックスを探しています...")
+            checkbox_found = False
 
-            for text in button_texts:
+            try:
+                # パターン1: input[type="checkbox"]を探す
+                checkboxes = driver.find_elements(By.XPATH, "//input[@type='checkbox']")
+                for checkbox in checkboxes:
+                    if not checkbox.is_selected():
+                        checkbox.click()
+                        print("✅ チェックボックスをクリックしました")
+                        checkbox_found = True
+                        time.sleep(2)
+                        break
+            except Exception as e:
+                print(f"  チェックボックス検索エラー: {e}")
+
+            if not checkbox_found:
+                # パターン2: labelに「確認」というテキストを含む要素を探してクリック
                 try:
+                    labels = driver.find_elements(By.XPATH, "//label[contains(text(), '確認')]")
+                    if labels:
+                        labels[0].click()
+                        print("✅ チェックボックスのlabelをクリックしました")
+                        checkbox_found = True
+                        time.sleep(2)
+                except Exception as e:
+                    print(f"  label検索エラー: {e}")
+
+            # ステップ2: 「次へ」ボタンをクリック
+            print("\n[ステップ2] 「次へ」ボタンを探しています...")
+            next_button_clicked = False
+
+            next_button_texts = ['次へ', '次', 'Next', '次のページ']
+            for text in next_button_texts:
+                try:
+                    # buttonタグ
                     button = driver.find_element(By.XPATH, f"//button[contains(text(), '{text}')]")
                     button.click()
-                    print(f"✅ ボタンをクリックしました: '{text}'")
-                    consent_clicked = True
+                    print(f"✅ 「{text}」ボタンをクリックしました")
+                    next_button_clicked = True
+                    time.sleep(3)  # 次のページの読み込みを待つ
                     break
                 except:
-                    pass
-
-            if not consent_clicked:
-                # aタグも試す
-                for text in button_texts:
                     try:
+                        # aタグ
                         link = driver.find_element(By.XPATH, f"//a[contains(text(), '{text}')]")
                         link.click()
-                        print(f"✅ リンクをクリックしました: '{text}'")
-                        consent_clicked = True
+                        print(f"✅ 「{text}」リンクをクリックしました")
+                        next_button_clicked = True
+                        time.sleep(3)
                         break
                     except:
                         pass
 
+            # ステップ3: 「サービスの利用を開始する」ボタンをクリック
+            if next_button_clicked:
+                print("\n[ステップ3] 「サービスの利用を開始する」ボタンを探しています...")
+
+                confirm_button_texts = [
+                    'サービスの利用を開始する',
+                    'サービスの利用を開始',
+                    '利用を開始する',
+                    '利用を開始',
+                    '開始する',
+                    '開始'
+                ]
+
+                for text in confirm_button_texts:
+                    try:
+                        # buttonタグ
+                        button = driver.find_element(By.XPATH, f"//button[contains(text(), '{text}')]")
+                        button.click()
+                        print(f"✅ 「{text}」ボタンをクリックしました")
+                        consent_clicked = True
+                        time.sleep(3)
+                        break
+                    except:
+                        try:
+                            # aタグ
+                            link = driver.find_element(By.XPATH, f"//a[contains(text(), '{text}')]")
+                            link.click()
+                            print(f"✅ 「{text}」リンクをクリックしました")
+                            consent_clicked = True
+                            time.sleep(3)
+                            break
+                        except:
+                            pass
+
         except Exception as e:
-            print(f"自動クリック失敗: {e}")
+            print(f"\n自動クリック処理エラー: {e}")
+            import traceback
+            traceback.print_exc()
 
         if not consent_clicked:
             print("\n⚠️  自動クリックできませんでした")
-            print("\n手動操作が必要です:")
-            print("1. ブラウザに同意ダイアログが表示されている場合は「OK」をクリック")
-            print("2. 表示されていない場合はそのままEnter")
-            print("\n確認後、Enterキーを押してください...")
-            input()
+            if not auto_mode:
+                print("\n手動操作が必要です:")
+                print("1. 「内容について確認しました」チェックボックスにチェック")
+                print("2. 「次へ」ボタンをクリック")
+                print("3. 「サービスの利用を開始する」ボタンをクリック")
+                print("4. 表示されていない場合はそのままEnter")
+                print("\n確認後、Enterキーを押してください...")
+                input()
+            else:
+                print("\n自動モード: 手動操作はスキップされました")
+                print("5秒待機後、次のステップに進みます...")
+                time.sleep(5)
         else:
-            print("\n✅ 同意ダイアログをクリックしました")
+            print("\n✅ 2段階の同意操作が完了しました！")
             print("\n5秒待機...")
             time.sleep(5)
 
@@ -150,12 +235,14 @@ def setup_with_auto_consent():
             else:
                 print(f"❌ {description} ({keyword}): 見つかりません")
 
-        # 結果判定
+        # 結果判定（修正版: <?xmlは不要、<search>と<record>があればOK）
         print("\n" + "="*60)
-        if '<?xml' in content and '<search' in content:
+        if '<search' in content and '<record>' in content:
             record_count = content.count('<record>')
             print(f"✅ 成功: {record_count}件の記事を検出")
             print("\nJWT tokenが正しく保存されました！")
+            print("\n【注意】ChromeがXMLをHTMLでラップするため、<?xmlヘッダーは表示されませんが、")
+            print("     <search>と<record>タグが確認できれば正常に動作しています。")
             success = True
         elif 'JWT token' in content or '"error"' in content:
             print("❌ JWT認証エラー")
@@ -188,7 +275,7 @@ def setup_with_auto_consent():
 
             content = driver.page_source
 
-            if '<?xml' in content and '<search' in content:
+            if '<search' in content and '<record>' in content:
                 record_count = content.count('<record>')
                 print(f"✅ 再試行成功: {record_count}件の記事を検出")
                 success = True

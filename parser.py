@@ -33,11 +33,14 @@ class NhkXmlParser:
 
             # <record>タグをすべて取得
             for record in root.findall('.//record'):
+                # NHKは<detail>タグを使用（<description>ではない）
+                description = self._get_text(record, 'detail') or self._get_text(record, 'description')
+
                 article = {
                     'title': self._get_text(record, 'title'),
                     'link': self._get_text(record, 'link'),
                     'pubDate': self._get_text(record, 'pubDate'),
-                    'description': self._get_text(record, 'description'),
+                    'description': description,
                 }
 
                 # 必須フィールドチェック

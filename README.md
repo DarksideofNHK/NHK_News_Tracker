@@ -87,7 +87,7 @@ python3 main_hybrid.py
   ↓ データ取得（Selenium、RSS）
   ↓ HTMLレポート生成
   ↓
-Webサイト（Netlify/GitHub Pages）
+Webサイト（Netlify等）
   ↓ HTMLファイルのみをホスティング
 ```
 
@@ -115,20 +115,6 @@ netlify init
 
 # デプロイ
 ./deploy_simple.sh
-```
-
-#### 方法C: GitHub Pages（完全自動・1時間ごと更新）
-
-```bash
-# GitHub設定（初回のみ）
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin git@github.com:DarksideofNHK/nhk-news-tracker.git
-git push -u origin main
-
-# GitHub Pages設定
-# リポジトリ → Settings → Pages → Source: gh-pages
 ```
 
 詳細は以下のガイドを参照:
@@ -406,7 +392,7 @@ Issue tracker: https://github.com/DarksideofNHK/nhk-news-tracker/issues
 - 訂正記事の自動追跡（NHK ONE検索を含む）
 - AI分析による変更内容の要約
 - 訂正箇所の視覚的ハイライト表示
-- 複数デプロイ方法対応（Netlify/GitHub Pages）
+- 複数デプロイ方法対応（Netlify等の静的ホスティング）
 
 ---
 
